@@ -1,0 +1,32 @@
+# Credentials and local account data
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+private/
+data/
+logs/
+*.log
+
+# Python and tools
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+.venv/
+env/
+.conda/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local scan / test outputs
+reports/
