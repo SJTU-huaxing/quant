@@ -1,12 +1,9 @@
 """Scan the entire Git index without printing secret values. Run before pushing."""
 
-import logging
 import os
 import re
 import subprocess
 from pathlib import Path
-
-from dotenv import dotenv_values
 
 
 def git(*args: str) -> bytes:
@@ -37,27 +34,20 @@ def content_rules(content: bytes, local_secrets: list[bytes]) -> list[str]:
 
 
 def main() -> int:
-    logging.getLogger("dotenv.main").disabled = True
     try:
         os.chdir(git("rev-parse", "--show-toplevel").decode().strip())
         filenames = [name for name in git("ls-files", "-z").decode().split("\0") if name]
         if not filenames:
             print("Secret scan failed: Git index is empty. Stage project files first.")
             return 1
-        # Scan file and environment values separately, including overridden .env credentials.
-        local_secrets = []
-        sources = [os.environ, dotenv_values(".env", interpolate=False)]
-        for source in sources:
-            for key in ("BINANCE_API_KEY", "BINANCE_API_SECRET"):
-                value = (source.get(key) or "").strip()
-                if value:
-                    local_secrets.append(value.encode())
+        # Never load local files or credential environment variables for this scan.
         findings = []
         for name in filenames:
             if forbidden_path(name):
                 findings.append((name, "private/local file must not be tracked"))
+                continue  # Do not even read a protected file from the Git index.
             content = git("show", ":" + name)
-            findings.extend((name, rule) for rule in content_rules(content, local_secrets))
+            findings.extend((name, rule) for rule in content_rules(content, []))
             if Path(name).name == ".env.example":
                 for line in content.splitlines():
                     if re.match(rb"BINANCE_API_(KEY|SECRET)\s*=\s*\S+", line):

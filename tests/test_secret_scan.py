@@ -25,3 +25,18 @@ def test_detects_private_key_and_does_not_flag_own_source():
     private_header = b"-----BEGIN " + b"RSA PRIVATE KEY-----"
     assert scan.content_rules(private_header, [])
     assert scan.content_rules(SCRIPT.read_bytes(), []) == []
+
+
+def test_scanner_never_opens_protected_git_blob(monkeypatch, tmp_path, capsys):
+    def fake_git(*args):
+        if args == ("rev-parse", "--show-toplevel"):
+            return str(tmp_path).encode()
+        if args == ("ls-files", "-z"):
+            return b".env\0README.md\0"
+        if args == ("show", ":README.md"):
+            return b"Public project information"
+        raise AssertionError("Scanner must not request a private blob")
+
+    monkeypatch.setattr(scan, "git", fake_git)
+    assert scan.main() == 1
+    assert "private/local file" in capsys.readouterr().out

@@ -136,7 +136,27 @@ git config core.hooksPath .githooks
 
 测试使用 `httpx.MockTransport` 和虚构凭据，不需要真实账户，也不发起网络请求。覆盖签名、时间恢复、只读接口限制、禁止跳转、密钥不进入公共请求、错误脱敏、余额隐私和配置优先级。CI 仅做离线测试和扫描，不配置真实 Binance 密钥。
 
-`scripts/check_secrets.py` 检查整个 Git 暂存区中的文件名、常见密钥格式，以及本机已配置 Key / Secret 是否出现在待上传内容中。它只报告文件名和规则，不报告匹配值。先暂存再扫描；如果没有暂存文件会失败。
+`scripts/check_secrets.py` 仅检查 Git 暂存区中的文件名和常见密钥格式，不读取本机 `.env`、其他私有配置或环境变量中的凭据。发现被禁止的文件名会直接阻止提交，连暂存区里的该文件内容也不会读取。它只报告文件名和规则，不报告匹配值。先暂存再扫描；如果没有暂存文件会失败。它不能发现所有形式的敏感数据。
+
+## 不读取凭据的网络诊断
+
+代理/TUN 网络排查使用独立脚本，它不会导入项目配置或加载 `.env`，仅访问 Binance 公共 GET 接口，不会修改代理、DNS、路由、网卡或防火墙：
+
+```powershell
+# 系统默认路由，不显式指定 HTTP 代理；开启 TUN 时仍可能经过代理
+python scripts/probe_binance_network.py
+
+# 使用现有本地 HTTP 代理，请替换为你已经使用的端口
+python scripts/probe_binance_network.py --proxy http://127.0.0.1:10808
+
+# Windows：先查看物理网卡的 ifIndex，仅对测试 socket 设置出站接口
+Get-NetAdapter | Select-Object Name,Status,ifIndex
+python scripts/probe_binance_network.py --interface-index 16
+```
+
+`16` 仅为示例，实际网卡编号以本机输出为准。绑定在 TCP 连接建立之前通过 Windows `IP_UNICAST_IF` 设置，只影响当前测试连接。其他 VPN/WFP 层仍可能施加限制，因此不能把绑定接口本身当作完整的链路证明。脚本保留 TLS 证书验证，不跟随重定向，不打印公网出口 IP 或完整响应。
+
+项目 `AGENTS.md` 禁止 AI 直接或间接访问私有 `.env`，也禁止 AI 运行会自动加载它的账户 CLI。账户认证请由用户在自己的终端执行。Codex 用户级 `config.toml` 可配置命名权限 profile 与文件 `deny`；已有 Full Access 任务不会因此自动切换为受限制的沙箱，旧版 CLI 也不能视为已获得保护。
 
 ## 常见问题
 
