@@ -208,7 +208,7 @@ class TestnetExecutor:
         return {
             "authenticated": True,
             "network": "testnet",
-            "connection": "direct",
+            "connection": "system-route",
             "round_trip": "completed",
             "flat_after": True,
             "sizing_notional_limit_usdt": str(MAX_NOTIONAL),
@@ -228,7 +228,7 @@ def main():
     logging.disable(logging.CRITICAL)
     try:
         # User terminal only. Never run this entry point as an agent.
-        settings = Settings.load()
+        settings = Settings.load(network="testnet", market="usdm")
         with TestnetExecutor(settings) as executor:
             if args.round_trip:
                 with TestnetMarket() as market:
@@ -236,7 +236,7 @@ def main():
                 output = executor.round_trip(snapshot)
             else:
                 output = executor.authenticate()
-                output.update(network="testnet", connection="direct")
+                output.update(network="testnet", connection="system-route")
         print(json.dumps(output, indent=2))
         return 0
     except QuantError as exc:

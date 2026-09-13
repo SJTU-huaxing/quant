@@ -20,7 +20,11 @@ def parser() -> argparse.ArgumentParser:
         description="Read-only Binance Futures/Spot API connection tools"
     )
     result.add_argument("--env-file", type=Path, help="Explicit local .env path")
-    result.add_argument("--network", choices=("testnet", "mainnet"), help="Select Binance network")
+    result.add_argument(
+        "--network",
+        choices=("testnet", "mainnet"),
+        help="Select network and matching MAIN/TEST keys; account commands prompt if omitted",
+    )
     result.add_argument(
         "--market", choices=("usdm", "spot"), help="USD-M Futures (default) or Spot"
     )
@@ -45,23 +49,24 @@ def main(argv: list[str] | None = None) -> int:
     previous_log_threshold = logging.root.manager.disable
     logging.disable(logging.CRITICAL)
     try:
-        configured = Settings.load(args.env_file)
         private_command = args.command in ("account", "permissions")
-        target_market = args.market or configured.market
-        target_network = args.network or configured.network
-        if (
-            private_command
-            and not args.prompt_credentials
-            and (configured.api_key or configured.api_secret)
-            and (target_market, target_network) != (configured.market, configured.network)
-        ):
-            raise ConfigurationError(
-                "Credential market/network mismatch. Use a matching local env file "
-                "or --prompt-credentials for the selected destination."
-            )
-        settings = replace(configured, market=target_market, network=target_network)
-        if not private_command or args.prompt_credentials:
-            settings = replace(settings, api_key="", api_secret="")
+        target_network = args.network
+        if private_command and target_network is None:
+            if not sys.stdin.isatty():
+                raise ConfigurationError(
+                    "Select --network mainnet or testnet, or run scripts/verify_accounts.py "
+                    "to check both accounts in your own terminal."
+                )
+            choice = input("Network: 1 = testnet, 2 = mainnet: ").strip().lower()
+            target_network = {"1": "testnet", "2": "mainnet"}.get(choice, choice)
+            if target_network not in ("testnet", "mainnet"):
+                raise ConfigurationError("Select testnet or mainnet.")
+        target_network = target_network or "testnet"
+        if private_command and not args.prompt_credentials:
+            settings = Settings.load(args.env_file, network=target_network, market=args.market)
+        else:
+            # Public requests and hidden-input mode never need a dotenv file.
+            settings = Settings(market=args.market or "usdm", network=target_network)
         if args.prompt_credentials:
             if not private_command:
                 raise ConfigurationError("Credential prompting is only for account/permissions.")
@@ -84,7 +89,11 @@ def main(argv: list[str] | None = None) -> int:
         if private_command:
             settings.require_credentials()
 
-        output = {"market": settings.market, "network": settings.network}
+        output = {
+            "market": settings.market,
+            "network": settings.network,
+            "connection_mode": "system-route",
+        }
         with BinanceClient(settings) as client:
             if args.command == "ping":
                 client.ping()

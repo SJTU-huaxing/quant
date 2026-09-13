@@ -15,6 +15,20 @@ BASE_URLS = {
     ("spot", "testnet"): "https://testnet.binance.vision",
     ("spot", "mainnet"): "https://api.binance.com",
 }
+CREDENTIAL_NAMES = {
+    "mainnet": ("BINANCE_API_KEY_MAIN", "BINANCE_API_SECRET_MAIN"),
+    "testnet": ("BINANCE_API_KEY_TEST", "BINANCE_API_SECRET_TEST"),
+}
+
+
+def _local_values(path: Path, *, required: bool) -> dict[str, str | None]:
+    """Local I/O boundary, replaced by in-memory fixtures in offline tests."""
+    if required and not path.is_file():
+        raise ConfigurationError("The specified local env file does not exist.")
+    try:
+        return dict(dotenv_values(path, interpolate=False)) if path.is_file() else {}
+    except (OSError, UnicodeError):
+        raise ConfigurationError("Unable to read the local env file.") from None
 
 
 @dataclass(frozen=True)
@@ -30,7 +44,7 @@ class Settings:
         if self.market not in ("usdm", "spot"):
             raise ConfigurationError("BINANCE_MARKET must be usdm or spot.")
         if self.network not in ("testnet", "mainnet"):
-            raise ConfigurationError("BINANCE_NETWORK must be testnet or mainnet.")
+            raise ConfigurationError("network must be testnet or mainnet.")
         if not math.isfinite(self.timeout_seconds) or not 0 < self.timeout_seconds <= 60:
             raise ConfigurationError("BINANCE_TIMEOUT_SECONDS must be between 0 and 60.")
         if not 1 <= self.recv_window_ms <= 5000:
@@ -45,28 +59,28 @@ class Settings:
 
     def require_credentials(self) -> None:
         if not self.api_key or not self.api_secret:
+            key_name, secret_name = CREDENTIAL_NAMES[self.network]
             raise ConfigurationError(
-                "Set BINANCE_API_KEY and BINANCE_API_SECRET locally, "
+                f"Set {key_name} and {secret_name} locally, "
                 "or use --prompt-credentials in your own terminal. Never send keys in chat."
             )
 
     @classmethod
     def load(
-        cls, env_file: Path | None = None, network: str | None = None, market: str | None = None
+        cls, env_file: Path | None = None, *, network: str, market: str | None = None
     ) -> "Settings":
+        # Select the destination before accessing local configuration. No legacy
+        # network variable or shared-key fallback may change the selected account.
+        if network not in CREDENTIAL_NAMES:
+            raise ConfigurationError("network must be testnet or mainnet.")
+        key_name, secret_name = CREDENTIAL_NAMES[network]
         # No recursive .env search, no interpolation of secrets into other fields.
         path = env_file if env_file is not None else Path.cwd() / ".env"
-        if env_file is not None and not path.is_file():
-            raise ConfigurationError("The specified local env file does not exist.")
-        try:
-            values = dict(dotenv_values(path, interpolate=False)) if path.is_file() else {}
-        except (OSError, UnicodeError):
-            raise ConfigurationError("Unable to read the local env file.") from None
+        values = _local_values(path, required=env_file is not None)
         names = (
             "BINANCE_MARKET",
-            "BINANCE_NETWORK",
-            "BINANCE_API_KEY",
-            "BINANCE_API_SECRET",
+            key_name,
+            secret_name,
             "BINANCE_TIMEOUT_SECONDS",
             "BINANCE_RECV_WINDOW_MS",
         )
@@ -76,11 +90,9 @@ class Settings:
         try:
             return cls(
                 market=market if market is not None else values.get("BINANCE_MARKET") or "usdm",
-                network=network
-                if network is not None
-                else values.get("BINANCE_NETWORK") or "testnet",
-                api_key=(values.get("BINANCE_API_KEY") or "").strip(),
-                api_secret=(values.get("BINANCE_API_SECRET") or "").strip(),
+                network=network,
+                api_key=(values.get(key_name) or "").strip(),
+                api_secret=(values.get(secret_name) or "").strip(),
                 timeout_seconds=float(values.get("BINANCE_TIMEOUT_SECONDS") or "10"),
                 recv_window_ms=int(values.get("BINANCE_RECV_WINDOW_MS") or "5000"),
             )

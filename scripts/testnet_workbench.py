@@ -31,7 +31,7 @@ def main():
         print(
             json.dumps(
                 {
-                    "connection": "direct",
+                    "connection": "system-route",
                     "network": "testnet",
                     "symbol": args.symbol,
                     "completed_candles": len(snapshot["candles"]),

@@ -1,4 +1,4 @@
-# quant：Binance 合约测试网 API 连接基础
+# quant：Binance 主网 / 测试网 API 连接基础
 
 一个 Python 3.12 项目，默认连接 Binance **USDⓈ-M 合约测试网**（USDT 本位合约），验证网络连接和账户只读权限，为后续量化系统提供独立的连接层。另支持现货作为可选模式；暂不支持 COIN-M 币本位合约。
 
@@ -62,17 +62,22 @@ if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 用本地编辑器填写 `.env`：
 
 ```dotenv
+BINANCE_API_KEY_MAIN=
+BINANCE_API_SECRET_MAIN=
+BINANCE_API_KEY_TEST=
+BINANCE_API_SECRET_TEST=
+
+# 以下为可选项；只配置上面四个变量也可以运行
 BINANCE_MARKET=usdm
-BINANCE_NETWORK=testnet
-BINANCE_API_KEY=
-BINANCE_API_SECRET=
 BINANCE_TIMEOUT_SECONDS=10
 BINANCE_RECV_WINDOW_MS=5000
 ```
 
-填写等号后的合约测试网 Key / Secret，保留 `BINANCE_MARKET=usdm` 和 `BINANCE_NETWORK=testnet`。`.env` 是本机明文文件，不是加密保险库，请限制文件访问并避免同步或备份到共享位置。仓库只包含空白 `.env.example`。当前目录的 `.env` 会自动读取，也可用 `--env-file` 指定路径；不会向父目录搜索配置。
+主网填写 MAIN 对应的两个变量，测试网填写 TEST 对应的两个变量。程序不再使用 `BINANCE_NETWORK` 或旧的无后缀密钥变量；即使本地文件仍有旧变量也会忽略。主网、测试网密钥不会互相回退。`.env` 仅由用户自己运行的认证程序读取，不提交到仓库；本次代码迁移没有读取或修改已有私有 `.env`。
 
-系统环境变量优先于 `.env`，显式 `--network` / `--market` 优先于两者。已配置凭据时，账户命令会拒绝用命令行将凭据切换到其他市场或网络；请更换匹配的 `.env` 文件，或使用隐藏输入提供目标网络凭据。长期自动运行建议由操作系统或部署平台的 Secret 管理器注入环境变量。不要将密钥写入 `environment.yml`、Conda 环境导出或 CI 配置。
+同名系统环境变量优先于 `.env`。网络由 CLI 的 `--network`、终端交互选择或 Python 函数参数决定；不从 dotenv 决定。`Settings.load(network="mainnet")` 只选 MAIN 凭据，`Settings.load(network="testnet")` 只选 TEST 凭据。`market` 默认 `usdm`，仍可显式指定 `spot`；需要目标市场可用的密钥。
+
+CLI 的公开 `ping` / `price` 不加载 `.env`；默认 USD-M 测试网，使用 `--network` / `--market` 切换。账户 CLI 从当前目录读取 `.env`，也可指定 `--env-file`，不向父目录搜索。双账户脚本默认从项目根目录读取 `.env`，可用 `--env-file` 覆盖。
 
 ## 使用
 
@@ -83,7 +88,11 @@ BINANCE_RECV_WINDOW_MS=5000
 python -m quant_binance ping
 python -m quant_binance price --symbol BTCUSDT
 
-# 使用本地配置验证账户，不显示资产和身份信息
+# 使用对应密钥验证账户，不显示资产和身份信息
+python -m quant_binance --network mainnet account
+python -m quant_binance --network testnet account
+
+# 不传网络参数时，在交互终端选择 1=测试网、2=主网
 python -m quant_binance account
 
 # 可选现货公共连接，不使用账户凭据
@@ -93,7 +102,7 @@ python -m quant_binance --market spot --network testnet ping
 python -m quant_binance --market spot --network mainnet permissions
 
 # 仅在自己的终端明确需要查看余额时使用；不要将输出上传或共享
-python -m quant_binance account --show-balances
+python -m quant_binance --network testnet account --show-balances
 ```
 
 也可将 `python -m quant_binance` 替换成 `quant-binance`。
@@ -104,6 +113,7 @@ python -m quant_binance account --show-balances
 {
   "market": "usdm",
   "network": "testnet",
+  "connection_mode": "system-route",
   "authenticated": true,
   "read_only_client": true,
   "balances_hidden": true,
@@ -113,12 +123,52 @@ python -m quant_binance account --show-balances
 
 公共 `ping` 成功只说明网络连通；只有 `account` 成功才能证明密钥认证通过。`read_only_client` 描述本项目的接口限制，不表示密钥在 Binance 的实际权限只有读取。合约权限请查看官方 API 管理页；`permissions` 子命令只支持现货主网 SAPI。现货账户返回的 `canTrade` 不能代替 API Key 权限检查。
 
+### 系统路由和 TUN
+
+已删除硬编码代理及 `network_policy.py`，也不再使用 `--usdm-mainnet-proxy` 或 `--doh-proxy`。主网和测试网均使用普通网络连接，固定 `trust_env=False`，不继承 HTTP_PROXY / HTTPS_PROXY 等应用层代理。系统已开启的 TUN 仍按操作系统路由接管流量；程序不设置代理端口、不切换节点、不改 TUN、DNS 或路由。HTTPS 证书校验始终开启。
+
+无需密钥的公开接口检查（默认检查两个网络的 Ping、服务器时间和 BTCUSDT 行情，共六项，全部通过才返回退出码 0）：
+
+```powershell
+python scripts/probe_binance_network.py
+```
+
+### 一次验证主网和测试网账户
+
+由用户在自己的终端运行，默认按 MAIN / TEST 分别验证两个账户，不需要传网络参数：
+
+```powershell
+Set-Location C:\Users\jiangdaorui\Desktop\quant
+conda activate quant
+python scripts/verify_accounts.py
+```
+
+脚本先检查每个网络的公开接口，再使用对应密钥只读查询账户。输出 `public_connected` 和 `authenticated`，分别表示网络连通与签名认证是否通过；余额、持仓、账户身份、密钥、签名和原始错误内容不输出。普通认证失败后仍检查另一个网络；收到 418 / 429 时停止。两个账户均认证成功才返回退出码 0，不发送订单。
+
+也可以只检查一个网络：
+
+```powershell
+python scripts/verify_accounts.py --network mainnet
+python scripts/verify_accounts.py --network testnet
+```
+
+脚本调用方式（由用户运行，同样会加载本地凭据）：
+
+```python
+from quant_binance.verification import verify_account
+
+print(verify_account("mainnet"))
+print(verify_account("testnet"))
+```
+
+可在 `scripts/verify_accounts.py` 的 `NETWORKS` 元组中选择默认检查的网络。常规客户端也可以使用 `Settings.load(network="mainnet")` 或 `Settings.load(network="testnet")` 构造对应配置；不要打印 `client.account()` 返回的原始账户数据。
+
 ## 隐私与请求行为
 
 - 密钥字段不出现在配置对象的 `repr` 中；CLI 不打印密钥、签名、请求 URL、服务器原始错误、账户 ID 或完整账户响应。
 - 账户结果采用输出字段白名单，余额只有显式 `--show-balances` 才显示；合约持仓始终不输出。合约余额显示币种、钱包余额、可用余额、未实现盈亏，保留十进制精度。不会自动写入账户数据、日志或文件。
-- HTTPS 证书校验保持开启，禁止重定向，只使用固定官方域名；不自动读取代理或自定义 CA 环境变量。需能够直接访问相应 Binance 服务的网络。
-- Binance 客户端、公开行情采集和测试网执行均固定 `trust_env=False`、`proxy=None`，后续默认直连，不自动回退到代理。系统级 TUN 仍可能影响路由；项目不会修改它。Codex 自身所需的代理不属于本项目设置。
+- HTTPS 证书校验保持开启，禁止重定向，只使用固定官方域名；不自动读取代理或自定义 CA 环境变量。
+- 客户端固定 `trust_env=False`，所有市场使用系统路由及当前 TUN；失败不自动改用另一网络或另一组凭据。Codex 自身的网络设置不属于本项目。
 - 使用 HMAC-SHA256 签名、服务端时间同步和单调时钟；`recvWindow` 限定为 1–5000 ms。时间戳拒绝仅重新同步并重试一次只读查询。
 - 所有请求有超时。429 / 418 立即停止，不循环重试，错误中显示有效的 `Retry-After` 秒数；这是连接基础，不是高频调度器。
 - CLI 禁止 HTTP 库日志。直接调用 Python 客户端时，也不要开启 HTTP 调试日志、抓取带签名请求或记录原始响应；`account()` 返回的内存对象含私有数据。
@@ -137,7 +187,7 @@ python scripts/check_secrets.py
 git config core.hooksPath .githooks
 ```
 
-测试使用 `httpx.MockTransport` 和虚构凭据，不需要真实账户，也不发起网络请求。覆盖签名、时间恢复、只读接口限制、禁止跳转、密钥不进入公共请求、错误脱敏、余额隐私和配置优先级。CI 仅做离线测试和扫描，不配置真实 Binance 密钥。
+测试使用 `httpx.MockTransport` 和内存中的虚构凭据；配置 I/O 被替换，不创建或读取 dotenv 文件，也不发起网络请求。覆盖签名、时间恢复、只读接口限制、禁止跳转、密钥不进入公共请求、错误脱敏、余额隐私和配置优先级。CI 仅做离线测试和扫描，不配置真实 Binance 密钥。
 
 `scripts/check_secrets.py` 仅检查 Git 暂存区中的文件名和常见密钥格式，不读取本机 `.env`、其他私有配置或环境变量中的凭据。发现被禁止的文件名会直接阻止提交，连暂存区里的该文件内容也不会读取。它只报告文件名和规则，不报告匹配值。先暂存再扫描；如果没有暂存文件会失败。它不能发现所有形式的敏感数据。
 
@@ -167,7 +217,7 @@ conda activate quant
 python scripts/testnet_workbench.py --symbol BTCUSDT --limit 500
 ```
 
-该脚本不加载 `.env` 或账户凭据。它从固定的合约测试网直连读取服务器时间、交易规则、1 分钟 K 线、买卖一价、标记价格和资金费率。仅保留已完成、连续且未过期的 K 线。JSON 结果保存到已被 Git 忽略的 `data/testnet/`，不上传到仓库。
+该脚本不加载 `.env` 或账户凭据。它按系统路由从固定的合约测试网读取服务器时间、交易规则、1 分钟 K 线、买卖一价、标记价格和资金费率。仅保留已完成、连续且未过期的 K 线。JSON 结果保存到已被 Git 忽略的 `data/testnet/`，不上传到仓库。
 
 本地回放采用 SMA 20/50 做多或空仓：使用前一根及更早的收盘价生成信号，在下一根开盘价上模拟成交。初始虚拟资金 10000 USDT，按报价计算的单次开仓名义金额不超过 200 USDT；包含每次 5 bps 假设手续费和 2 bps 假设滑点，未模拟资金费及强平。结果用于验证数据和策略流程，不代表测试网真实成交或策略盈利能力。`exchange_orders_sent` 始终为 0。
 

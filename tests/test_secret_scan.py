@@ -1,6 +1,8 @@
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "check_secrets.py"
 SPEC = importlib.util.spec_from_file_location("secret_scan", SCRIPT)
 scan = importlib.util.module_from_spec(SPEC)
@@ -40,3 +42,22 @@ def test_scanner_never_opens_protected_git_blob(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(scan, "git", fake_git)
     assert scan.main() == 1
     assert "private/local file" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("suffix", ["KEY_MAIN", "SECRET_MAIN", "KEY_TEST", "SECRET_TEST"])
+@pytest.mark.parametrize("value,expected", [(b"", 0), (b"DummyExampleValue", 1)])
+def test_new_template_credentials_must_be_empty(
+    monkeypatch, tmp_path, capsys, suffix, value, expected
+):
+    def fake_git(*args):
+        if args == ("rev-parse", "--show-toplevel"):
+            return str(tmp_path).encode()
+        if args == ("ls-files", "-z"):
+            return b".env.example\0"
+        if args == ("show", ":.env.example"):
+            return b"BINANCE_API_" + suffix.encode() + b"=" + value
+        raise AssertionError("Unexpected Git access")
+
+    monkeypatch.setattr(scan, "git", fake_git)
+    assert scan.main() == expected
+    assert "DummyExampleValue" not in capsys.readouterr().out

@@ -85,6 +85,7 @@ def test_futures_cli_uses_testnet_and_v2_price(monkeypatch, capsys):
     assert output == {
         "market": "usdm",
         "network": "testnet",
+        "connection_mode": "system-route",
         "symbol": "BTCUSDT",
         "price": "123.45",
     }

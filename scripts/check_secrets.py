@@ -50,7 +50,7 @@ def main() -> int:
             findings.extend((name, rule) for rule in content_rules(content, []))
             if Path(name).name == ".env.example":
                 for line in content.splitlines():
-                    if re.match(rb"BINANCE_API_(KEY|SECRET)\s*=\s*\S+", line):
+                    if re.match(rb"BINANCE_API_(KEY|SECRET)(?:_MAIN|_TEST)?\s*=\s*\S+", line):
                         findings.append((name, "example credentials must be empty"))
         if findings:
             for name, rule in findings:

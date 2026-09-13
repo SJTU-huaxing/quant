@@ -64,10 +64,12 @@ def test_key_permission_allowlist_does_not_confuse_account_can_trade():
     }
 
 
-def test_account_cli_redacts_data_and_http_logging(monkeypatch, capsys):
-    monkeypatch.setenv("BINANCE_MARKET", "spot")
-    monkeypatch.setenv("BINANCE_API_KEY", "DummyKey")
-    monkeypatch.setenv("BINANCE_API_SECRET", "DummySecret")
+def test_account_cli_redacts_data_and_http_logging(monkeypatch, capsys, config_values):
+    config_values.update(
+        BINANCE_MARKET="spot",
+        BINANCE_API_KEY_TEST="DummyKey",
+        BINANCE_API_SECRET_TEST="DummySecret",
+    )
 
     def handle(request):
         if request.url.path.endswith("time"):
@@ -79,7 +81,7 @@ def test_account_cli_redacts_data_and_http_logging(monkeypatch, capsys):
         "BinanceClient",
         lambda settings: BinanceClient(settings, transport=httpx.MockTransport(handle)),
     )
-    assert cli.main(["account"]) == 0
+    assert cli.main(["--network", "testnet", "account"]) == 0
     captured = capsys.readouterr()
     output = json.loads(captured.out)
     assert output["authenticated"] is True
@@ -90,23 +92,24 @@ def test_account_cli_redacts_data_and_http_logging(monkeypatch, capsys):
 
 def test_missing_credentials_fails_without_http(monkeypatch, capsys):
     monkeypatch.setattr(cli, "BinanceClient", lambda _: pytest.fail("Should fail locally"))
-    assert cli.main(["account"]) == 1
+    assert cli.main(["--network", "testnet", "account"]) == 1
     assert "Never send keys in chat" in capsys.readouterr().err
 
 
 def test_prompt_refuses_noninteractive_input(monkeypatch, capsys):
     monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: False)
     monkeypatch.setattr(cli.getpass, "getpass", lambda _: pytest.fail("Must not read secret"))
-    assert cli.main(["--prompt-credentials", "account"]) == 1
+    assert cli.main(["--network", "testnet", "--prompt-credentials", "account"]) == 1
     assert "interactive terminal" in capsys.readouterr().err
 
 
-def test_private_network_override_cannot_reuse_configured_keys(monkeypatch, capsys):
-    monkeypatch.setenv("BINANCE_API_KEY", "DummyKey")
-    monkeypatch.setenv("BINANCE_API_SECRET", "DummySecret")
+def test_private_network_override_cannot_reuse_other_network_keys(
+    monkeypatch, capsys, config_values
+):
+    config_values.update(BINANCE_API_KEY_TEST="DummyKey", BINANCE_API_SECRET_TEST="DummySecret")
     monkeypatch.setattr(cli, "BinanceClient", lambda _: pytest.fail("Must not send credentials"))
     assert cli.main(["--network", "mainnet", "account"]) == 1
-    assert "mismatch" in capsys.readouterr().err
+    assert "BINANCE_API_KEY_MAIN" in capsys.readouterr().err
 
 
 def test_nested_http_logs_are_suppressed(monkeypatch, caplog):
