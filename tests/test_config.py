@@ -9,7 +9,7 @@ def test_default_and_credential_repr():
     assert settings.network == "testnet"
     assert "Dummy" not in repr(settings)
     assert settings.market == "usdm"
-    assert settings.base_url == "https://demo-fapi.binance.com"
+    assert settings.base_url == "https://testnet.binancefuture.com"
 
 
 def test_env_precedence_and_no_interpolation(monkeypatch, tmp_path):

@@ -1,17 +1,19 @@
 # quant：Binance 合约测试网 API 连接基础
 
-一个 Python 3.12 项目，默认连接 Binance **USDⓈ-M 合约测试网 / Demo Trading**（USDT 本位合约），验证网络连接和账户只读权限，为后续量化系统提供独立的连接层。另支持现货作为可选模式；暂不支持 COIN-M 币本位合约。
+一个 Python 3.12 项目，默认连接 Binance **USDⓈ-M 合约测试网**（USDT 本位合约），验证网络连接和账户只读权限，为后续量化系统提供独立的连接层。另支持现货作为可选模式；暂不支持 COIN-M 币本位合约。
 
 当前支持 HMAC API Key / Secret、测试网和主网、公开行情、账户认证、现货主网 API 权限查询。只允许固定的 GET 查询接口，没有下单、撤单、调整杠杆、划转或提现实现。
 
 | 模式 | 配置 | 官方 REST 地址 |
 | --- | --- | --- |
-| USDⓈ-M 合约测试网（默认） | `usdm` + `testnet` | `https://demo-fapi.binance.com` |
+| USDⓈ-M 合约测试网（默认） | `usdm` + `testnet` | `https://testnet.binancefuture.com` |
 | USDⓈ-M 合约主网 | `usdm` + `mainnet` | `https://fapi.binance.com` |
 | 现货测试网 | `spot` + `testnet` | `https://testnet.binance.vision` |
 | 现货主网 | `spot` + `mainnet` | `https://api.binance.com` |
 
 合约采用 `/fapi/v1/ping`、`/fapi/v1/time`、`/fapi/v2/ticker/price`、`/fapi/v3/account`。切换网络不会自动回退到主网。
+
+本项目的 `usdm + testnet` 使用 [Binance 官方 Python SDK](https://github.com/binance/binance-connector-python/blob/master/common/src/binance_common/constants.py) 中的 `DERIVATIVES_TRADING_USDS_FUTURES_REST_API_TESTNET_URL`。该 SDK 将 `https://demo-fapi.binance.com` 单独列为 Demo 地址；本项目不会自动切换到该地址。公共接口连通不代表不同入口的密钥通用，账户鉴权需要单独验证。
 
 ## 安装
 
@@ -34,7 +36,7 @@ PowerShell 找不到 `conda` 时，可使用 Miniconda Prompt；也可用 Minico
 
 ## 配置账户
 
-在 [Binance Futures Demo Trading](https://demo.binance.com/) 登录/创建模拟账户，再进入该模拟账户的 API Management 创建 HMAC API Key / Secret，具体步骤见 [Binance 官方指引](https://www.binance.com/en/support/faq/detail/ab78f9a1b8824cf0a106b4229c76496d)。请使用合约 Demo 的凭据，普通主网或现货测试网的密钥不能替代它。
+请准备适用于 `https://testnet.binancefuture.com` 的合约测试网 HMAC API Key / Secret。Binance 提供 [Futures Demo Trading API 创建指引](https://www.binance.com/en/support/faq/detail/ab78f9a1b8824cf0a106b4229c76496d)，但该指引不能证明 Demo 凭据在本项目所选测试网入口也有效。已有凭据的兼容性请由你在自己的终端执行只读 `account` 命令验证；普通主网或现货测试网密钥不能替代目标环境的凭据。
 
 如果改用现货，可在 [Binance Spot Test Network](https://testnet.binance.vision/) 创建对应凭据。连接真实账户时使用独立凭据并配置 IP 白名单、最小权限；本阶段不需要下单、提现或转账。RSA / Ed25519 密钥目前不支持。
 
@@ -68,7 +70,7 @@ BINANCE_TIMEOUT_SECONDS=10
 BINANCE_RECV_WINDOW_MS=5000
 ```
 
-填写等号后的合约 Demo Key / Secret，保留 `BINANCE_MARKET=usdm` 和 `BINANCE_NETWORK=testnet`。`.env` 是本机明文文件，不是加密保险库，请限制文件访问并避免同步或备份到共享位置。仓库只包含空白 `.env.example`。当前目录的 `.env` 会自动读取，也可用 `--env-file` 指定路径；不会向父目录搜索配置。
+填写等号后的合约测试网 Key / Secret，保留 `BINANCE_MARKET=usdm` 和 `BINANCE_NETWORK=testnet`。`.env` 是本机明文文件，不是加密保险库，请限制文件访问并避免同步或备份到共享位置。仓库只包含空白 `.env.example`。当前目录的 `.env` 会自动读取，也可用 `--env-file` 指定路径；不会向父目录搜索配置。
 
 系统环境变量优先于 `.env`，显式 `--network` / `--market` 优先于两者。已配置凭据时，账户命令会拒绝用命令行将凭据切换到其他市场或网络；请更换匹配的 `.env` 文件，或使用隐藏输入提供目标网络凭据。长期自动运行建议由操作系统或部署平台的 Secret 管理器注入环境变量。不要将密钥写入 `environment.yml`、Conda 环境导出或 CI 配置。
 

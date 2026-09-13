@@ -14,9 +14,12 @@ import certifi
 import httpx
 
 TARGETS = (
-    ("futures-testnet-ping", "https://demo-fapi.binance.com/fapi/v1/ping"),
-    ("futures-testnet-time", "https://demo-fapi.binance.com/fapi/v1/time"),
-    ("futures-testnet-price", "https://demo-fapi.binance.com/fapi/v2/ticker/price?symbol=BTCUSDT"),
+    ("futures-testnet-ping", "https://testnet.binancefuture.com/fapi/v1/ping"),
+    ("futures-testnet-time", "https://testnet.binancefuture.com/fapi/v1/time"),
+    (
+        "futures-testnet-price",
+        "https://testnet.binancefuture.com/fapi/v2/ticker/price?symbol=BTCUSDT",
+    ),
     ("futures-mainnet-ping", "https://fapi.binance.com/fapi/v1/ping"),
 )
 IP_UNICAST_IF = 31  # Windows ws2ipdef.h: outgoing IPv4 interface, set BEFORE connect.

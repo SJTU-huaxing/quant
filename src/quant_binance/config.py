@@ -10,7 +10,7 @@ from dotenv import dotenv_values
 from .errors import ConfigurationError
 
 BASE_URLS = {
-    ("usdm", "testnet"): "https://demo-fapi.binance.com",
+    ("usdm", "testnet"): "https://testnet.binancefuture.com",
     ("usdm", "mainnet"): "https://fapi.binance.com",
     ("spot", "testnet"): "https://testnet.binance.vision",
     ("spot", "mainnet"): "https://api.binance.com",

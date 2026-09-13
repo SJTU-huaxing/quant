@@ -34,7 +34,7 @@ def test_futures_default_network_signed_v3_account():
     def handle(request):
         seen.append(request.url.path)
         assert request.method == "GET"
-        assert request.url.host == "demo-fapi.binance.com"
+        assert request.url.host == "testnet.binancefuture.com"
         if request.url.path == "/fapi/v1/time":
             assert "X-MBX-APIKEY" not in request.headers
             return httpx.Response(200, json={"serverTime": 1700000000000})
@@ -66,13 +66,15 @@ def test_futures_balances_preserve_negative_pnl_and_hide_positions():
     assert output["positions_hidden"] is True
 
 
-def test_futures_cli_uses_demo_and_v2_price(monkeypatch, capsys):
+def test_futures_cli_uses_testnet_and_v2_price(monkeypatch, capsys):
     def handle(request):
-        assert request.url.host == "demo-fapi.binance.com"
+        assert request.url.host == "testnet.binancefuture.com"
         assert request.url.path == "/fapi/v2/ticker/price"
         assert request.url.params["symbol"] == "BTCUSDT"
         return httpx.Response(200, json={"symbol": "BTCUSDT", "price": "123.45"})
 
+    # This routing test uses in-memory settings and never invokes a dotenv loader.
+    monkeypatch.setattr(cli.Settings, "load", lambda *args, **kwargs: Settings())
     monkeypatch.setattr(
         cli,
         "BinanceClient",
