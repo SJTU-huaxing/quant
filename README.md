@@ -2,7 +2,7 @@
 
 一个 Python 3.12 项目，默认连接 Binance **USDⓈ-M 合约测试网**（USDT 本位合约），验证网络连接和账户只读权限，为后续量化系统提供独立的连接层。另支持现货作为可选模式；暂不支持 COIN-M 币本位合约。
 
-当前支持 HMAC API Key / Secret、测试网和主网、公开行情、账户认证、现货主网 API 权限查询。只允许固定的 GET 查询接口，没有下单、撤单、调整杠杆、划转或提现实现。
+当前支持 HMAC API Key / Secret、测试网和主网、公开行情、账户认证、现货主网 API 权限查询。常规 `quant-binance` 客户端只允许固定的 GET 查询接口。新增的独立工具支持公开行情回放和用户启动的合约测试网单次开仓/平仓；不提供主网下单、调整杠杆、划转或提现。
 
 | 模式 | 配置 | 官方 REST 地址 |
 | --- | --- | --- |
@@ -118,6 +118,7 @@ python -m quant_binance account --show-balances
 - 密钥字段不出现在配置对象的 `repr` 中；CLI 不打印密钥、签名、请求 URL、服务器原始错误、账户 ID 或完整账户响应。
 - 账户结果采用输出字段白名单，余额只有显式 `--show-balances` 才显示；合约持仓始终不输出。合约余额显示币种、钱包余额、可用余额、未实现盈亏，保留十进制精度。不会自动写入账户数据、日志或文件。
 - HTTPS 证书校验保持开启，禁止重定向，只使用固定官方域名；不自动读取代理或自定义 CA 环境变量。需能够直接访问相应 Binance 服务的网络。
+- Binance 客户端、公开行情采集和测试网执行均固定 `trust_env=False`、`proxy=None`，后续默认直连，不自动回退到代理。系统级 TUN 仍可能影响路由；项目不会修改它。Codex 自身所需的代理不属于本项目设置。
 - 使用 HMAC-SHA256 签名、服务端时间同步和单调时钟；`recvWindow` 限定为 1–5000 ms。时间戳拒绝仅重新同步并重试一次只读查询。
 - 所有请求有超时。429 / 418 立即停止，不循环重试，错误中显示有效的 `Retry-After` 秒数；这是连接基础，不是高频调度器。
 - CLI 禁止 HTTP 库日志。直接调用 Python 客户端时，也不要开启 HTTP 调试日志、抓取带签名请求或记录原始响应；`account()` 返回的内存对象含私有数据。
@@ -148,9 +149,6 @@ git config core.hooksPath .githooks
 # 系统默认路由，不显式指定 HTTP 代理；开启 TUN 时仍可能经过代理
 python scripts/probe_binance_network.py
 
-# 使用现有本地 HTTP 代理，请替换为你已经使用的端口
-python scripts/probe_binance_network.py --proxy http://127.0.0.1:10808
-
 # Windows：先查看物理网卡的 ifIndex，仅对测试 socket 设置出站接口
 Get-NetAdapter | Select-Object Name,Status,ifIndex
 python scripts/probe_binance_network.py --interface-index 16
@@ -159,6 +157,38 @@ python scripts/probe_binance_network.py --interface-index 16
 `16` 仅为示例，实际网卡编号以本机输出为准。绑定在 TCP 连接建立之前通过 Windows `IP_UNICAST_IF` 设置，只影响当前测试连接。其他 VPN/WFP 层仍可能施加限制，因此不能把绑定接口本身当作完整的链路证明。脚本保留 TLS 证书验证，不跟随重定向，不打印公网出口 IP 或完整响应。
 
 项目 `AGENTS.md` 禁止 AI 直接或间接访问私有 `.env`，也禁止 AI 运行会自动加载它的账户 CLI。账户认证请由用户在自己的终端执行。Codex 用户级 `config.toml` 可配置命名权限 profile 与文件 `deny`；已有 Full Access 任务不会因此自动切换为受限制的沙箱，旧版 CLI 也不能视为已获得保护。
+
+## 行情采集与两种交易验证
+
+### 公开行情与本地模拟成交
+
+```powershell
+conda activate quant
+python scripts/testnet_workbench.py --symbol BTCUSDT --limit 500
+```
+
+该脚本不加载 `.env` 或账户凭据。它从固定的合约测试网直连读取服务器时间、交易规则、1 分钟 K 线、买卖一价、标记价格和资金费率。仅保留已完成、连续且未过期的 K 线。JSON 结果保存到已被 Git 忽略的 `data/testnet/`，不上传到仓库。
+
+本地回放采用 SMA 20/50 做多或空仓：使用前一根及更早的收盘价生成信号，在下一根开盘价上模拟成交。初始虚拟资金 10000 USDT，按报价计算的单次开仓名义金额不超过 200 USDT；包含每次 5 bps 假设手续费和 2 bps 假设滑点，未模拟资金费及强平。结果用于验证数据和策略流程，不代表测试网真实成交或策略盈利能力。`exchange_orders_sent` 始终为 0。
+
+### 用户启动的账户验证及测试网单次往返交易
+
+仅在你自己的终端运行。AI 不运行这个入口，因为它会加载你配置的 `.env`。
+
+```powershell
+conda activate quant
+# 只验证账户；不发送订单
+python -m quant_binance.testnet_execution
+
+# 验证账户后，执行一次测试网开仓和平仓
+python -m quant_binance.testnet_execution --round-trip --symbol BTCUSDT
+```
+
+执行器拒绝 `mainnet`、现货和其他目标域名。开始前必须没有任何合约持仓或挂单，并使用单向持仓模式；它不会改变账户模式或杠杆。执行期间不要同时运行其他交易程序。它更新测试网交易规则和买卖一价，按 `LOT_SIZE`、`MARKET_LOT_SIZE` 与 `MIN_NOTIONAL` 计算最小合法数量（保留 1% 名义金额余量），若按最新报价计算超过 200 USDT 或买卖价差超过 0.5%，则停止。该金额是下单前估算，市价实际成交仍受滑点影响。
+
+往返流程只发送一次市价 BUY，再根据实际成交数量发送一次 `reduceOnly=true` 的市价 SELL。请求超时或 5xx 时，用唯一客户端订单号查询状态，不重新提交订单；429/418 立即停止。只有确认成交数量匹配、账户无剩余持仓才输出 `round_trip=completed` 和 `flat_after=true`。进程中断、未知订单状态或平仓失败时，需在官方测试网账户检查剩余持仓后再运行，程序不会声称已经平仓。
+
+只验证账户时 `authenticated=true` 代表鉴权成功。往返模式没有该输出时，不能假设验证或交易成功。输出隐藏密钥、签名、账户身份、余额和订单详情，不保存账户响应。公开行情可用不证明当前 Key/Secret 适用于该测试网入口。
 
 ## 常见问题
 
@@ -174,10 +204,12 @@ python scripts/probe_binance_network.py --interface-index 16
 
 ## 后续扩展
 
-当前范围是连接基础。后续可独立添加合约行情采集与回测层，再接入测试网执行层、保证金和杠杆限制、仓位模式、reduceOnly、订单幂等、交易规则校验、异常停机与审计，最后单独评审实盘执行。
+当前实现是公开行情回放和单次测试网接口验证。后续可添加持续采集、策略评估、故障恢复与审计；主网交易需要独立设计，本项目执行器不支持它。
 
 ## 官方参考
 
+- [USDⓈ-M 合约行情与交易规则](https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data)
+- [USDⓈ-M 合约下单与订单查询](https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/trade)
 - [USDⓈ-M 合约：测试网地址、安全与签名](https://developers.binance.com/en/docs/products/derivatives-trading-usds-futures/general-info)
 - [USDⓈ-M 合约账户 V3](https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/account)
 - [USDⓈ-M 合约行情 V2](https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/market-data)

@@ -88,28 +88,20 @@ def validate_public_result(name: str, status: int, content: bytes) -> bool:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument("--proxy", help="Existing local HTTP proxy, e.g. http://127.0.0.1:10808")
-    group.add_argument("--interface-index", type=int, help="Windows physical IPv4 interface index")
+    parser.add_argument("--interface-index", type=int, help="Windows physical IPv4 interface index")
     parser.add_argument("--timeout", type=float, default=15)
     args = parser.parse_args()
     if not 0 < args.timeout <= 60:
         parser.error("timeout must be between 0 and 60 seconds")
     if args.interface_index is not None and (sys.platform != "win32" or args.interface_index <= 0):
         parser.error("interface binding requires Windows and a positive interface index")
-    if args.proxy:
-        proxy = urlsplit(args.proxy)
-        if proxy.scheme != "http" or proxy.hostname not in ("127.0.0.1", "localhost", "::1"):
-            parser.error("Only an existing local HTTP proxy is supported")
-        if proxy.username or proxy.password or proxy.query or proxy.fragment:
-            parser.error("Proxy credentials and extra URL fields are not accepted")
     logging.disable(logging.CRITICAL)
-    mode = "explicit-proxy" if args.proxy else "system-route-no-explicit-proxy"
+    mode = "direct-no-explicit-proxy"
     if args.interface_index is not None:
         mode = "physical-interface-bound"
     succeeded = False
     with httpx.Client(
-        proxy=args.proxy, trust_env=False, timeout=args.timeout, follow_redirects=False
+        proxy=None, trust_env=False, timeout=args.timeout, follow_redirects=False
     ) as client:
         for name, url in TARGETS:
             start = time.monotonic()

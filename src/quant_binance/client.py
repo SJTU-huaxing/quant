@@ -49,6 +49,7 @@ class BinanceClient:
             follow_redirects=False,
             # Do not inherit proxy credentials, proxies or alternate CA paths silently.
             trust_env=False,
+            proxy=None,
             transport=transport,
             headers={"User-Agent": "quant-binance/0.1.0", "Accept": "application/json"},
         )

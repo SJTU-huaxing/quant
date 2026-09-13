@@ -1,4 +1,4 @@
-"""Read-only Binance Futures and Spot connectivity. No trading endpoints are implemented."""
+"""Read-only Binance connectivity with separate public replay and user-run testnet tools."""
 
 from .client import BinanceClient
 from .config import Settings
