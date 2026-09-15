@@ -136,14 +136,14 @@ function renderPipeline() {
   const s = state.data.signals || {}, p = state.data.paper || {}, decisions = p.decisions || [];
   const latest = decisions.at(-1), scanFresh=fresh(s.created_utc,180), paperFresh=fresh(p.updated_utc,45);
   $("pipeline").innerHTML = `<div class="pipeline-item"><span class="pipeline-icon">⌁</span><div><b>公共行情扫描</b><small>每 ${number(s.settings?.scan_seconds,0)} 秒 · ${esc(ageText(s.created_utc))}</small></div>${pill(scanFresh?"已更新":"待恢复",scanFresh?"green":"amber")}</div>
-    <div class="pipeline-item"><span class="pipeline-icon">◇</span><div><b>Codex 策略复核</b><small>计划每 15 分钟 · 上次 ${esc(ageText(latest?.processed_at))}</small></div>${pill("定期复核")}</div>
+    <div class="pipeline-item"><span class="pipeline-icon">◇</span><div><b>Codex 趋势复核</b><small>计划每 10 分钟 · 上次 ${esc(ageText(latest?.processed_at))}</small></div>${pill("定期复核")}</div>
     <div class="pipeline-item"><span class="pipeline-icon">◎</span><div><b>模拟仓位风控</b><small>每 ${number(s.settings?.poll_seconds,0)} 秒 · ${esc(ageText(p.updated_utc))}</small></div>${pill(paperFresh?"已更新":"已过期",paperFresh?"green":"red")}</div>`;
   const warnings=[];
   if (!scanFresh) warnings.push("行情扫描已过期或尚未就绪，当前候选不能直接用于开仓。");
   if (!paperFresh) warnings.push("模拟账本更新已过期；请检查风控进程和网络。旧净值不代表当前估值。");
   if ((p.profiles||[]).some((v)=>!v.valuation_fresh)) warnings.push("有持仓缺少新鲜报价，估值暂不可用。");
-  if (latest && age(latest.processed_at)>1800) warnings.push("最近一次复核已超过 30 分钟；定期复核是否运行请在 Codex 计划任务中检查。");
-  const errors = [...(state.data.errors||[]),...(s.errors||[]),...(p.errors||[])];
+  if (latest && age(latest.processed_at)>1200) warnings.push("最近一次趋势复核已超过 20 分钟；定期复核是否运行请在 Codex 计划任务中检查。");
+  const errors = [...(state.data.errors||[]).filter(e=>e.source!=="factors"),...(s.errors||[]),...(p.errors||[])];
   if (errors.length) warnings.push(`当前报告包含 ${errors.length} 项数据异常：${errors.map((e)=>e.symbol||e.source||e.error_type||"未知来源").join("、")}。`);
   $("alerts").innerHTML = warnings.map((v)=>`<p class="alert">${esc(v)}</p>`).join("");
   $("scan-stamp").textContent = `行情 ${timeText(s.created_utc)} CST · ${ageText(s.created_utc)}`;
@@ -193,6 +193,42 @@ function renderResearch() {
   $("research-content").innerHTML=`<div class="table-scroll"><table><thead><tr><th>交易对</th><th>验证集选定模型</th><th>留出期收益</th><th>最近 7 日诊断</th><th>留出期最大回撤</th><th>留出期平仓数</th></tr></thead><tbody>${pairs.map((p)=>`<tr><td><b>${esc(p.symbol)}</b></td><td>${esc(model(p.strategy))}</td><td class="${tone(p.holdout?.return_pct)}">${pct(p.holdout?.return_pct)}</td><td class="${tone(p.recent_7d?.return_pct)}">${pct(p.recent_7d?.return_pct)}</td><td>${number(p.holdout?.max_drawdown_pct)}%</td><td>${number(p.holdout?.closed_trades,0)}</td></tr>`).join("")}</tbody></table></div><div class="research-footer"><p>研究截至 ${esc(timeText(b.research_asof_utc,true))}（北京时间）。短期正收益不足以证明稳定盈利；当前没有满足全部主网上线门槛的策略。最小订单、手续费和滑点均影响小本金结果。</p><span>独立留出集 · 主网未启用</span></div>`;
 }
 
+const researchStatuses = {baseline:"保留基线", "insufficient-data":"继续积累样本", "retain-baseline":"暂不替换", "forward-watch":"冻结候选 · 前向观察", "review-remove":"候选移除 · 待执行验证", "review-add":"候选加入 · 待执行验证", "rejected-forward":"前向未通过"};
+function renderFactors() {
+  const r=state.data.factors || {}, rows=r.rows || [];
+  const warnings=[];
+  if (!fresh(r.updated_utc,1200)) warnings.push("因子与策略筛查超过两个周期未更新，或尚未运行。请检查定期复核与 factor_lab.py。");
+  if (!fresh(state.data.signals?.created_utc,180)) warnings.push("当前公开行情采集已过期，新增研究样本可能延迟；已保存的历史事件仍可查阅。");
+  if (r.errors?.length) warnings.push(`有 ${r.errors.length} 项未来行情待补或采集异常，不完整样本不会计入结果。`);
+  $("factor-alerts").innerHTML=warnings.map(v=>`<p class="alert">${esc(v)}</p>`).join("");
+  $("factor-stamp").textContent=`筛查 ${timeText(r.updated_utc)} CST · ${ageText(r.updated_utc)}`;
+  $("factor-metrics").innerHTML=[
+    ["FACTOR CATALOG","因子定义",number(r.factor_definitions,0),"7 个现有评分因子 + 3 个新增过滤条件"],
+    ["STRATEGY CATALOG","策略定义",number(r.strategy_definitions,0),"3 个基线 + 2 个新增试验"],
+    ["OBSERVED EVIDENCE","成熟事件",number(r.matured_events,0),`${number(r.pending_events,0)} 个待形成结果 / 待补行情`],
+    ["RESEARCH COVERAGE","实际样本跨度",number(r.observed_days,2)+" 天",`${number(r.tested_definitions,0)} 个预先声明的对照方案`],
+  ].map(([en,title,value,sub])=>`<div class="factor-metric"><span class="eyebrow">${en}</span><span>${title}</span><strong>${value}</strong><small>${esc(sub)}</small></div>`).join("");
+  const rowHtml=(v)=>{
+    const status=researchStatuses[v.status]||v.status, good=v.status?.startsWith("review-");
+    const kind=v.operation==="remove"?"减法试验":v.operation==="add"?"加法试验":"对照基线";
+    return `<tr><td><b>${esc(v.name)}</b><small class="research-cell-note">${kind}</small></td><td>${number(v.development?.signals,0)} / ${number(v.validation?.signals,0)}</td><td class="${tone(v.validation?.mean_net_bps)}">${signed(v.validation?.mean_net_bps,2)} bps</td><td class="${tone(v.validation?.delta_bps)}">${signed(v.validation?.delta_bps,2)} bps</td><td title="${esc(v.reason)}">${pill(status,good?"green":v.status==="rejected-forward"?"red":"")}<small class="research-cell-note">${v.forward?`已观察 ${number(v.forward.observed_days,2)} 天`:"开发 50 / 验证 20 信号起评"}</small></td><td>${v.forward?`${number(v.forward.signals,0)} / 30`:"尚未冻结"}</td></tr>`;
+  };
+  $("factor-rows").innerHTML=rows.filter(v=>v.family==="factor").map(rowHtml).join("")||`<tr><td colspan="6">${empty("等待因子筛查结果")}</td></tr>`;
+  $("strategy-rows").innerHTML=rows.filter(v=>v.family==="strategy").map(rowHtml).join("")||`<tr><td colspan="6">${empty("等待策略对照结果")}</td></tr>`;
+  $("factor-changes").innerHTML=r.changes?.length?r.changes.slice(-6).reverse().map(v=>`<div class="decision"><div class="decision-top"><b>${esc(v.name)}</b><time>${esc(timeText(v.time,true))}</time></div><div class="decision-results">${pill(v.before?"状态更新":"登记研究试验")}${pill(researchStatuses[v.after]||v.after)}</div><p>${esc(v.reason)}</p></div>`).join(""):empty("暂无筛查状态变化");
+  $("factor-method").innerHTML=`<dl><div><dt>开发 / 时间验证事件</dt><dd>${number(r.development_events,0)} / ${number(r.validation_events,0)}</dd></div><div><dt>跨切分点剔除事件</dt><dd>${number(r.purged_events,0)}</dd></div><div><dt>时间切分点（北京）</dt><dd>${esc(timeText(r.split_time,true))}</dd></div><div><dt>预测结果的持有期</dt><dd>15 分钟 · 下一完整 K 线开盘进入</dd></div><div><dt>筛查周期</dt><dd>10 分钟 · 不把运行次数当样本数</dd></div><div><dt>执行规则变更</dt><dd>${r.execution_policy_changed===false?"未变更；研究期与执行分开":"未知"}</dd></div></dl><div class="method-notes">${(r.limitations||[]).map(v=>`<p>· ${esc(v)}</p>`).join("")}</div><small class="version-label">研究版本 ${esc(r.version||"—")}</small>`;
+}
+
+let currentWorkspace="";
+function setWorkspace() {
+  const next=["#factors","#research"].includes(location.hash)?"factors":"trend";
+  document.querySelectorAll("main>.section[data-workspace]").forEach(section=>{section.hidden=section.dataset.workspace!==next;});
+  document.querySelectorAll("[data-workspace-link]").forEach(link=>{link.classList.toggle("active",link.dataset.workspaceLink===next);if(link.dataset.workspaceLink===next)link.setAttribute("aria-current","page");else link.removeAttribute("aria-current");});
+  $("workspace-title").textContent=next==="factors"?"因子与策略":"趋势跟踪";
+  document.title=(next==="factors"?"因子与策略":"趋势跟踪")+" / QUANT";
+  if(currentWorkspace!==next){currentWorkspace=next;requestAnimationFrame(()=>$(next==="factors"?"factors":"overview").scrollIntoView({behavior:"instant",block:"start"}));}
+}
+
 function showDetail(id) {
   const s=state.data.signals || {}, c=(s.ranking||[]).find((v)=>v.id===id);
   if (!c) return;
@@ -209,7 +245,7 @@ function showDetail(id) {
 }
 
 function render() {
-  renderMetrics();renderChart();renderRisk();renderPipeline();renderWind();renderCandidates();renderJournal();renderResearch();
+  renderMetrics();renderChart();renderRisk();renderPipeline();renderWind();renderCandidates();renderJournal();renderResearch();renderFactors();
   $("footer-stamp").textContent=`账本 ${timeText(state.data.paper?.updated_utc)} CST · 页面每 5 秒刷新`;
 }
 async function refresh() {
@@ -242,9 +278,8 @@ $("candidate-rows").addEventListener("click",(event)=>{const button=event.target
 $("close-dialog").addEventListener("click",()=>$("detail-dialog").close());
 $("detail-dialog").addEventListener("click",(event)=>{if(event.target===$("detail-dialog")){const r=event.target.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)event.target.close();}});
 $("refresh").addEventListener("click",refresh);
-const links=[...document.querySelectorAll(".nav-link")];
-const observer=new IntersectionObserver((entries)=>{for(const entry of entries){if(entry.isIntersecting){for(const link of links)link.classList.toggle("active",link.hash==="#"+entry.target.id);}}},{rootMargin:"-10% 0px -65% 0px",threshold:0});
-document.querySelectorAll("main>.section").forEach((section)=>observer.observe(section));
+window.addEventListener("hashchange",setWorkspace);
+setWorkspace();
 setInterval(()=>{$("clock").textContent="北京时间 "+timeText(Date.now());},1000);
 setInterval(()=>{if(!document.hidden)refresh();},5000);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)refresh();});

@@ -20,6 +20,7 @@ REPORTS = {
     "signals": "reports/tactical/signals.json",
     "paper": "reports/tactical/paper_status.json",
     "baseline": "reports/strategy_lab/latest.json",
+    "factors": "reports/factor_lab/latest.json",
 }
 
 
@@ -68,6 +69,7 @@ def snapshot(root, now):
         ("signals", "created_utc", 180),
         ("paper", "updated_utc", 45),
         ("baseline", "updated_utc", 60),
+        ("factors", "updated_utc", 1200),
     ):
         result["sources"][name] = freshness(result[name].get(field), now, limit)
     paper = result["paper"]

@@ -26,6 +26,7 @@ def public_fixture(root):
     write_public(root, "reports/tactical/paper_status.json", paper)
     write_public(root, "reports/tactical/signals.json", {"created_utc": paper["updated_utc"]})
     write_public(root, "reports/strategy_lab/latest.json", {"updated_utc": paper["updated_utc"]})
+    write_public(root, "reports/factor_lab/latest.json", {"updated_utc": paper["updated_utc"]})
     return paper
 
 
@@ -67,7 +68,7 @@ def test_missing_reports_are_unknown_not_healthy(tmp_path):
     assert not any(s["fresh"] for s in data["sources"].values())
     assert all(s["age_seconds"] is None for s in data["sources"].values())
     assert data["paper"] == {}
-    assert len(data["errors"]) == 3
+    assert len(data["errors"]) == 4
 
 
 def test_timestamp_boundaries():
