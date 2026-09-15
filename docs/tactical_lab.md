@@ -82,6 +82,8 @@ python -I scripts/tactical_lab.py paper-watch
 
 ## 结果文件
 
+本地交互网页：运行 `python -I scripts/dashboard.py`，访问 http://127.0.0.1:8765。详见 [策略观测站](dashboard.md)。2026-09-15 用户已授权每 15 分钟 Codex 复核与新模拟开仓；原有单次复核限制已更新，所有风险和无真实订单边界保留。
+
 - `tactical.toml`：公开参数。
 - `reports/tactical/dashboard.html`：本轮判断和 1×/2×/3× 模拟净值。
 - `reports/tactical/signals.json`：最新扫描证据。

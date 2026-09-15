@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>QUANT / 策略观测站</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/app.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">跳到主要内容</a>
+<aside class="sidebar">
+  <a class="brand" href="#overview" aria-label="Quant 首页"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 23V9l11-5 11 5v14l-11 5Z"/><path d="m10 21 6-11 6 11m-11-3h10"/></svg><span>QUANT<span class="brand-dot">.</span></span></a>
+  <div class="workspace-label">LOCAL WORKSPACE</div>
+  <nav aria-label="主要导航">
+    <a href="#overview" class="nav-link active"><span class="nav-icon">◫</span>策略总览<span class="nav-num">01</span></a>
+    <a href="#market" class="nav-link"><span class="nav-icon">⌁</span>市场雷达<span class="nav-num">02</span></a>
+    <a href="#journal" class="nav-link"><span class="nav-icon">≡</span>决策日志<span class="nav-num">03</span></a>
+    <a href="#research" class="nav-link"><span class="nav-icon">⊞</span>策略研究<span class="nav-num">04</span></a>
+  </nav>
+  <div class="sidebar-note"><span class="eyebrow">实验的边界</span><strong>先验证，再迭代。</strong><p>以数据记录判断，<br>以风险约束交易。</p><span class="pill amber">PAPER TRADING</span></div>
+  <div class="sidebar-bottom"><span class="tiny-dot"></span><span>本机运行 · 私有工作区</span><small>USDⓈ-M / QUANT LAB</small></div>
+</aside>
+<div class="shell">
+  <header class="topbar"><div class="breadcrumb">工作区 <span>/</span> 策略观测站</div><div class="top-actions"><span id="connection" class="connection"><i></i>正在连接</span><span class="divider"></span><time id="clock">北京时间 --:--:--</time><button class="icon-button" id="refresh" aria-label="刷新数据" title="刷新数据">↻</button></div></header>
+  <main id="main">
+    <section id="overview" class="section">
+      <div class="page-heading"><div><p class="eyebrow">OBSERVE. REASON. TEST.</p><h1>让每一次判断，都有迹可循<span class="accent">。</span></h1><p class="subtitle">多周期市场信号 × 模型复核 × 有边界的杠杆实验</p></div><div class="mode-badge"><i></i><div><strong>本地模拟运行</strong><small>公开行情 / 虚拟成交</small></div></div></div>
+      <div class="notice"><span class="notice-icon">◇</span><p>主网行情用于分析，测试网报价用于模拟。每组独立 <strong>50 USDT</strong>，不可相加；真实交易所订单 <strong id="real-orders">—</strong>。</p><span class="notice-tag">主网交易未启用</span></div>
+      <div id="alerts" role="status"></div>
+      <div id="metrics" class="metrics"><div class="metric skeleton">正在读取模拟账本…</div></div>
+      <div class="overview-grid">
+        <article class="panel equity-panel">
+          <div class="panel-heading"><div><p class="eyebrow">PERFORMANCE</p><h2>虚拟净值轨迹</h2></div><div class="segmented" id="range-controls" aria-label="净值时间范围"><button data-range="1" aria-pressed="false">1H</button><button data-range="6" aria-pressed="false">6H</button><button data-range="24" aria-pressed="false">24H</button><button data-range="0" class="selected" aria-pressed="true">全部</button></div></div>
+          <div class="chart-summary"><div><span id="chart-equity">—</span><small>USDT · <b id="chart-profile">1×</b> 场景</small></div><span id="chart-return" class="return-chip">—</span></div>
+          <div id="equity-chart" class="chart" aria-label="三组独立模拟账户净值图"></div>
+          <div class="chart-bottom"><div class="legend"><span><i class="line teal"></i>1×</span><span><i class="line blue"></i>2×</span><span><i class="line gold"></i>3×</span><span><i class="line dashed"></i>初始本金</span></div><span class="muted">点选上方账户切换详情</span></div>
+          <p class="footnote">实测净值点，含手续费和资金费。间断采样以断线显示，早期小时快照较稀疏；历史表现不代表未来收益。</p>
+        </article>
+        <article class="panel risk-panel"><div class="panel-heading"><div><p class="eyebrow">RISK FIRST</p><h2>风险与持仓</h2></div><span id="risk-leverage" class="pill">1× 场景</span></div><div id="risk-content" class="risk-content"></div></article>
+      </div>
+      <div class="pipeline" id="pipeline"></div>
+    </section>
+
+    <section id="market" class="section">
+      <div class="section-title"><div><p class="eyebrow">MARKET RADAR</p><h2>寻找有依据的短线机会</h2><p class="subtitle">流动性与波动筛选后，再比较趋势、量能和资金方向。</p></div><span id="scan-stamp" class="stamp">等待行情快照</span></div>
+      <div class="wind-strip" id="wind-strip"></div>
+      <article class="panel market-panel">
+        <div class="market-toolbar"><div class="segmented" id="candidate-controls" aria-label="候选状态"><button data-filter="all" class="selected" aria-pressed="true">全部候选</button><button data-filter="eligible" aria-pressed="false">可复核</button><button data-filter="blocked" aria-pressed="false">暂缓</button></div><div class="filters"><label class="search-box"><span>⌕</span><input id="search" type="search" placeholder="搜索交易对" aria-label="搜索交易对" autocomplete="off"></label><select id="model-filter" aria-label="筛选策略模型"><option value="all">全部模型</option><option value="momentum">趋势动量</option><option value="volume_breakout">放量突破</option><option value="trend_pullback">趋势回踩</option></select></div></div>
+        <div class="table-scroll"><table class="candidates"><thead><tr><th>交易对 / 模型</th><th>方向</th><th>规则评分 <span title="不是盈利概率">ⓘ</span></th><th>15m 涨跌</th><th>相对量</th><th>RSI</th><th>信号状态</th><th><span class="sr-only">详情</span></th></tr></thead><tbody id="candidate-rows"></tbody></table></div>
+        <div class="table-footer"><span id="candidate-count">—</span><span>已收盘 K 线 · 分数不等于胜率</span><div class="pagination"><button class="small-button" id="previous-page" aria-label="上一页候选">←</button><span id="page-number">1 / 1</span><button class="small-button" id="next-page" aria-label="下一页候选">→</button></div></div>
+      </article>
+    </section>
+
+    <section id="journal" class="section">
+      <div class="section-title"><div><p class="eyebrow">DECISION JOURNAL</p><h2>从判断，到结果</h2></div><span class="stamp">保留依据，也保留反对证据</span></div>
+      <div class="journal-grid"><article class="panel"><div class="panel-heading"><h3>复核记录</h3><span class="pill">Codex 复核</span></div><div id="decisions"></div></article><article class="panel"><div class="panel-heading"><h3>模拟平仓记录</h3><span id="trade-profile" class="pill">1× 场景</span></div><div id="trades"></div></article></div>
+    </section>
+
+    <section id="research" class="section">
+      <div class="section-title"><div><p class="eyebrow">STRATEGY RESEARCH</p><h2>用更长的样本检验想法</h2><p class="subtitle">小时级基线策略 · 验证集选模型，独立留出集看结果</p></div><span class="pill amber">尚未达到主网上线条件</span></div>
+      <article class="panel"><div id="research-content"></div></article>
+    </section>
+    <footer><span>QUANT LAB <b>/</b> 记录事实，审慎行动。</span><span id="footer-stamp">本地仪表盘 · 每 5 秒刷新</span></footer>
+  </main>
+</div>
+<dialog id="detail-dialog" aria-labelledby="detail-title"><div class="dialog-top"><span class="eyebrow">SIGNAL EVIDENCE</span><button id="close-dialog" class="icon-button" aria-label="关闭详情">×</button></div><div id="detail-content"></div></dialog>
+<noscript><p class="noscript">此仪表盘需要启用 JavaScript 才能显示实时数据。</p></noscript>
+</body>
+</html>
