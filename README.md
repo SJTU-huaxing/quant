@@ -1,5 +1,7 @@
 # quant：Binance 主网 / 测试网 API 连接基础
 
+新增 [短线复核与杠杆模拟](docs/tactical_lab.md)：动态筛选高波动山寨币，分析 5m/15m 量价、订单流和持仓变化，使用本轮明确复核后的一次性判断比较 1×/2×/3× 独立模拟。入口 `python -I scripts/tactical_lab.py scan`。没有真实下单路径，不会自动把评分转成账户交易。
+
 新增 [策略实验室使用说明](docs/strategy_lab.md)：最近市场数据、逐交易对比较三类策略、共用 50 USDT 预算的模型选币、测试网行情持续模拟及风险看板。入口为 `python -I scripts/strategy_lab.py watch`（首次先执行 `bootstrap` 和 `research`）。该工具只使用公开配置和公开行情，不加载账户密钥，也不发送交易所订单。
 
 一个 Python 3.12 项目，默认连接 Binance **USDⓈ-M 合约测试网**（USDT 本位合约），验证网络连接和账户只读权限，为后续量化系统提供独立的连接层。另支持现货作为可选模式；暂不支持 COIN-M 币本位合约。
