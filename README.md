@@ -1,5 +1,7 @@
 # quant：Binance 主网 / 测试网 API 连接基础
 
+新增 [策略实验室使用说明](docs/strategy_lab.md)：最近市场数据、逐交易对比较三类策略、共用 50 USDT 预算的模型选币、测试网行情持续模拟及风险看板。入口为 `python -I scripts/strategy_lab.py watch`（首次先执行 `bootstrap` 和 `research`）。该工具只使用公开配置和公开行情，不加载账户密钥，也不发送交易所订单。
+
 一个 Python 3.12 项目，默认连接 Binance **USDⓈ-M 合约测试网**（USDT 本位合约），验证网络连接和账户只读权限，为后续量化系统提供独立的连接层。另支持现货作为可选模式；暂不支持 COIN-M 币本位合约。
 
 当前支持 HMAC API Key / Secret、测试网和主网、公开行情、账户认证、现货主网 API 权限查询。常规 `quant-binance` 客户端只允许固定的 GET 查询接口。新增的独立工具支持公开行情回放和用户启动的合约测试网单次开仓/平仓；不提供主网下单、调整杠杆、划转或提现。

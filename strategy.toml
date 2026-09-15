@@ -1,0 +1,28 @@
+# Public research settings. No credentials belong in this file.
+symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
+interval = "1h"
+history_days = 180
+poll_seconds = 15
+paper_network = "testnet"
+trial_id = "forward-20260915"
+
+[risk]
+capital_usdt = 50.0
+max_loss_fraction = 0.50
+max_drawdown_fraction = 0.10
+daily_loss_fraction = 0.02
+risk_per_trade_fraction = 0.01
+max_exposure_fraction = 0.50
+max_spread_bps = 20.0
+max_quote_age_seconds = 30
+fee_bps = 5.0
+slippage_bps = 2.0
+
+[promotion]
+min_history_days = 180
+min_holdout_days = 30
+min_holdout_trades = 30
+min_positive_folds = 3
+min_profit_factor = 1.2
+min_forward_days = 30
+min_forward_trades = 30
