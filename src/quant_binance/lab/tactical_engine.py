@@ -10,7 +10,7 @@ from .tactical_signals import FIVE
 
 
 def experiment(settings):
-    return fingerprint(dict(engine="tactical-v1", settings=asdict(settings)))
+    return fingerprint(dict(engine="tactical-v2", settings=asdict(settings)))
 
 
 def initial_state(settings, now):
@@ -69,6 +69,27 @@ def validate_ticket(ticket, snapshot, settings, now):
     return candidate, "valid"
 
 
+def equity_floor(book, risk):
+    """A trade budget is anchored before entry, never to a falling live balance."""
+    anchor = book.entry_cash if book.qty else book.cash
+    return max(
+        anchor * (1 - risk.risk_per_trade_fraction),
+        risk.capital_usdt * (1 - risk.max_loss_fraction),
+        book.peak * (1 - risk.max_drawdown_fraction),
+        book.day_equity - risk.capital_usdt * risk.daily_loss_fraction,
+    )
+
+
+def equity_stop_price(book, risk):
+    """Executable bid/ask which leaves the floor after modeled exit fee and slippage."""
+    if not book.qty:
+        return None
+    direction = 1 if book.qty > 0 else -1
+    slip = 1 - direction * risk.slippage_bps / 10000
+    denominator = slip * (book.qty - abs(book.qty) * risk.fee_bps / 10000)
+    return (equity_floor(book, risk) - book.cash + book.qty * book.entry) / denominator
+
+
 def manage(profile, quote, funding, risk, now):
     book = Book(**profile["book"])
     if now <= book.last_time:
@@ -95,17 +116,39 @@ def manage(profile, quote, funding, risk, now):
             reason = "time-exit"
         direction = 1 if book.qty > 0 else -1
         distance = book.entry * profile["stop_fraction"]
-        if direction * (mark - book.entry) >= distance:
+        budget_mode = risk.stop_mode == "equity_budget"
+        if not budget_mode and direction * (mark - book.entry) >= distance:
             trailing = mark - direction * distance
             book.stop = max(book.stop, trailing) if direction > 0 else min(book.stop, trailing)
-        stop = book.risk_stop_price(risk)
+        stop = equity_stop_price(book, risk) if budget_mode else book.risk_stop_price(risk)
+        if budget_mode:
+            book.stop = stop
         exit_quote = quote["bid"] if book.qty > 0 else quote["ask"]
         if not reason and direction * (exit_quote - stop) <= 0:
-            reason = "protective-or-trailing-stop"
+            reason = "equity-budget-stop" if budget_mode else "protective-or-trailing-stop"
         if not reason and direction * (exit_quote - profile["take_profit"]) >= 0:
             reason = "take-profit"
         if reason:
+            # Public audit evidence survives closing the book and clearing its entry/stop.
+            profile["last_exit_evidence"] = dict(
+                time=now,
+                quote_time=quote["time"],
+                entry=book.entry,
+                qty=book.qty,
+                entry_equity=book.entry_cash,
+                cash_before_exit=book.cash,
+                bid=quote["bid"],
+                ask=quote["ask"],
+                mark=mark,
+                stop=stop,
+                stop_mode=risk.stop_mode,
+                reason=reason,
+                equity_floor=equity_floor(book, risk) if budget_mode else None,
+                fee_bps=risk.fee_bps,
+                slippage_bps=risk.slippage_bps,
+            )
             book.close(exit_quote, now, reason, risk)
+            profile["last_exit_evidence"]["equity_after_exit"] = book.cash
             profile["last_exit"] = now
             profile["margin"] = 0
     book.record(mark, now, risk)
@@ -171,6 +214,9 @@ def enter(profile, candidate, main_quote, test_quote, depth, rules, risk, now):
         return "insufficient-isolated-margin"
     profile["margin"] = margin
     profile["stop_fraction"] = fraction
+    if risk.stop_mode == "equity_budget":
+        book.stop = equity_stop_price(book, risk)
+    # Keep the existing strategy profit target; this is NOT 2x the wider equity budget.
     profile["take_profit"] = book.entry * (1 + direction * fraction * risk.take_profit_r)
     profile["status"] = "opened-in-simulation"
     book.record(test_quote["mark"], now, risk)
@@ -192,6 +238,19 @@ def summary(profile, quote, risk):
         effective_exposure=abs(book.qty) * mark / max(book.equity(mark), 0.001),
         liquidation_events=profile["liquidation_events"],
         valuation_fresh=quote is not None or not book.qty,
+        stop_mode=risk.stop_mode,
+        trade_risk_fraction=risk.risk_per_trade_fraction,
+        trade_loss_budget_usdt=(book.entry_cash if book.qty else book.cash)
+        * risk.risk_per_trade_fraction,
+        risk_equity_floor_usdt=(
+            equity_floor(book, risk) if risk.stop_mode == "equity_budget" else None
+        ),
+        effective_loss_budget_usdt=(
+            max(0, (book.entry_cash if book.qty else book.cash) - equity_floor(book, risk))
+            if risk.stop_mode == "equity_budget"
+            else None
+        ),
+        last_exit_evidence=profile.get("last_exit_evidence"),
         margin_model=(
             f"illustrative isolated margin, {risk.maintenance_margin_fraction:.1%} "
             "maintenance; not exchange liquidation math"

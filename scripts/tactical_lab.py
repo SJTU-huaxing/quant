@@ -13,6 +13,7 @@ from quant_binance.lab.runner import atomic_json
 from quant_binance.lab.store import Store
 from quant_binance.lab.tactical_engine import ticket
 from quant_binance.lab.tactical_market import scan
+from quant_binance.lab.tactical_migration import migrate_flat_state
 from quant_binance.lab.tactical_runner import paper_tick
 from quant_binance.lab.tactical_settings import TacticalSettings
 
@@ -22,7 +23,8 @@ ROOT = Path(__file__).resolve().parents[1]
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "command", choices=("scan", "scan-watch", "paper-once", "paper-watch", "review", "status")
+        "command",
+        choices=("scan", "scan-watch", "paper-once", "paper-watch", "review", "status", "migrate"),
     )
     parser.add_argument("--config", type=Path, default=ROOT / "tactical.toml")
     parser.add_argument("--data", type=Path, default=ROOT / "data/tactical")
@@ -30,11 +32,21 @@ def main():
     parser.add_argument("--snapshot-id")
     parser.add_argument("--candidate")
     parser.add_argument("--rationale")
+    parser.add_argument("--previous-experiment")
     args = parser.parse_args()
     logging.disable(logging.CRITICAL)
     settings = TacticalSettings.load(args.config)
     args.data.mkdir(parents=True, exist_ok=True)
     args.output.mkdir(parents=True, exist_ok=True)
+    if args.command == "migrate":
+        result = migrate_flat_state(
+            args.data,
+            settings,
+            args.previous_experiment,
+            int(datetime.now(UTC).timestamp() * 1000),
+        )
+        print(json.dumps(result))
+        return 0
     if args.command == "review":
         snapshot = json.loads((args.output / "signals.json").read_text(encoding="utf-8"))
         if not args.snapshot_id or args.snapshot_id != snapshot["snapshot_id"]:

@@ -147,6 +147,28 @@ class History:
                 "SELECT time, equity FROM equity WHERE experiment=? AND leverage=? ORDER BY time",
                 (experiment, lev),
             ).fetchall()
+            # Policy changes preserve the same economic book, including earlier losses.
+            samples = dict(rows)
+            cursor = experiment
+            for step in reversed(paper.get("policy_history", [])[-16:]):
+                previous, cutoff = step.get("previous_experiment", ""), step.get("time")
+                if (
+                    step.get("experiment") != cursor
+                    or not re.fullmatch(r"[0-9a-f]{20}", previous)
+                    or previous == cursor
+                    or type(cutoff) is not int
+                    or cutoff > now
+                ):
+                    break
+                old_rows = self.db.execute(
+                    "SELECT time, equity FROM equity "
+                    "WHERE experiment=? AND leverage=? AND time<? ORDER BY time",
+                    (previous, lev, cutoff),
+                ).fetchall()
+                for timestamp, equity in old_rows:
+                    samples.setdefault(timestamp, equity)
+                cursor = previous
+            rows = sorted(samples.items())
             # Keep each bucket's extrema so the plot preserves visible drawdowns.
             if len(rows) > 1200:
                 size = math.ceil(len(rows) / 400)

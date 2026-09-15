@@ -147,6 +147,8 @@ def paper_tick(store, settings, data, output):
         updated_utc=datetime.fromtimestamp(now / 1000, UTC).isoformat(),
         experiment=state["experiment"],
         mode="review-gated-testnet-simulation",
+        risk_settings=asdict(settings),
+        policy_history=state.get("policy_history", []),
         profiles=[
             summary(p, quotes.get(p["book"]["active_symbol"]), settings.risk(int(lev)))
             for lev, p in state["profiles"].items()

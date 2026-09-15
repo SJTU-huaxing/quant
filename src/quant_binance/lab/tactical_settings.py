@@ -18,6 +18,7 @@ class TacticalSettings:
     poll_seconds: int = 15
     leverages: tuple = (1, 2, 3)
     capital_usdt: float = 50
+    stop_mode: str = "atr"
     max_loss_fraction: float = 0.5
     max_drawdown_fraction: float = 0.20
     daily_loss_fraction: float = 0.05
@@ -35,7 +36,9 @@ class TacticalSettings:
     max_testnet_deviation_fraction: float = 0.01
 
     def __post_init__(self):
-        numbers = {k: v for k, v in asdict(self).items() if k not in ("trial_id", "leverages")}
+        numbers = {
+            k: v for k, v in asdict(self).items() if k not in ("trial_id", "leverages", "stop_mode")
+        }
         if any(
             type(v) not in (int, float) or not math.isfinite(v) or v <= 0 for v in numbers.values()
         ):
@@ -52,11 +55,16 @@ class TacticalSettings:
             or any(type(n) is not int or n not in (1, 2, 3) for n in self.leverages)
         ):
             raise ConfigurationError("Only independent 1x/2x/3x paper scenarios are supported.")
+        if self.stop_mode not in ("atr", "equity_budget"):
+            raise ConfigurationError("Use atr or equity_budget for the public paper stop mode.")
+        trade_cap, day_cap, drawdown_cap = (
+            (0.50, 0.50, 0.50) if self.stop_mode == "equity_budget" else (0.02, 0.05, 0.20)
+        )
         if not (
             self.capital_usdt <= 50
-            and self.risk_per_trade_fraction <= 0.02
-            and self.risk_per_trade_fraction <= self.daily_loss_fraction <= 0.05
-            and self.daily_loss_fraction <= self.max_drawdown_fraction <= 0.20
+            and self.risk_per_trade_fraction <= trade_cap
+            and self.risk_per_trade_fraction <= self.daily_loss_fraction <= day_cap
+            and self.daily_loss_fraction <= self.max_drawdown_fraction <= drawdown_cap
             and self.max_drawdown_fraction <= self.max_loss_fraction <= 0.50
             and self.max_margin_fraction <= 0.60
         ):

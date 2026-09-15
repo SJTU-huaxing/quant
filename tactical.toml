@@ -7,10 +7,12 @@ scan_seconds = 120
 poll_seconds = 15
 leverages = [1, 2, 3]
 capital_usdt = 50.0
+# User-selected on 2026-09-15: per-trade equity budget, not a 50% price move.
+stop_mode = "equity_budget"
 max_loss_fraction = 0.50
-max_drawdown_fraction = 0.20
-daily_loss_fraction = 0.05
-risk_per_trade_fraction = 0.02
+max_drawdown_fraction = 0.50
+daily_loss_fraction = 0.50
+risk_per_trade_fraction = 0.50
 max_margin_fraction = 0.60
 fee_bps = 5.0
 slippage_bps = 4.0

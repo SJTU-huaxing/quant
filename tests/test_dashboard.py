@@ -71,6 +71,34 @@ def test_missing_reports_are_unknown_not_healthy(tmp_path):
     assert len(data["errors"]) == 4
 
 
+def test_policy_migration_keeps_previous_actual_equity_curve(tmp_path):
+    old, new = "b" * 20, "c" * 20
+    h = History(tmp_path / "public-history.sqlite3")
+    try:
+        h.db.executemany(
+            "INSERT INTO equity VALUES (?, ?, ?, ?)",
+            [
+                (old, 1, NOW - 20000, 49.8),
+                (old, 1, NOW - 5000, 999),  # after migration: must not enter the new curve
+            ],
+        )
+        h.db.commit()
+        data = dict(
+            server_time=NOW,
+            sources={"paper": {"fresh": True}},
+            paper=dict(
+                experiment=new,
+                updated_at=NOW,
+                profiles=[dict(leverage=1, equity_usdt=49.3, valuation_fresh=True)],
+                policy_history=[dict(experiment=new, previous_experiment=old, time=NOW - 10000)],
+            ),
+        )
+        h.update(data)
+        assert data["curves"]["1"] == [(NOW - 20000, 49.8), (NOW, 49.3)]
+    finally:
+        h.close()
+
+
 def test_timestamp_boundaries():
     assert freshness(NOW - 45000, NOW, 45)["fresh"]
     assert not freshness(NOW - 45001, NOW, 45)["fresh"]

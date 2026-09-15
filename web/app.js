@@ -7,7 +7,7 @@ const models = {momentum: "趋势动量", volume_breakout: "放量突破", trend
 const labels = {
   "waiting-for-review": "等待新复核", "holding": "模拟持仓中", "opened-in-simulation": "已模拟开仓",
   "observation-gap": "观测间隔过长退出", "time-exit": "到达持仓时限", "take-profit": "触发止盈",
-  "protective-or-trailing-stop": "保护 / 移动止损", "estimated-isolated-liquidation": "模拟强平阈值",
+  "protective-or-trailing-stop": "保护 / 移动止损", "equity-budget-stop": "权益预算止损", "estimated-isolated-liquidation": "模拟强平阈值",
   "risk-limit": "触发风险上限", "risk-halted": "风险停机", "review-hold": "继续观察",
   "existing-position-kept": "保留现有仓位", "exit-cooldown": "平仓冷却中",
   "missing-testnet-quote": "缺少测试网报价", "stale-testnet-quote": "测试网报价过期",
@@ -118,16 +118,20 @@ function renderChart() {
 }
 
 function renderRisk() {
-  const p = selectedProfile(), l = state.data.ledgers?.[String(state.leverage)] || {}, s = state.data.signals?.settings || {};
+  const p = selectedProfile(), l = state.data.ledgers?.[String(state.leverage)] || {}, s = state.data.paper?.risk_settings || state.data.signals?.settings || {};
   $("risk-leverage").textContent = `${state.leverage}× 场景`;
   if (!finite(p.equity_usdt)) {$("risk-content").innerHTML = empty("等待风险数据"); return;}
   const dailyLoss = finite(l.day_equity) ? Math.max(0, l.day_equity-p.equity_usdt) : null;
-  const dailyCap = finite(l.day_equity) && finite(s.daily_loss_fraction) ? l.day_equity*s.daily_loss_fraction : null;
+  const dailyCap = finite(p.initial_usdt) && finite(s.daily_loss_fraction) ? p.initial_usdt*s.daily_loss_fraction : null;
   const drawdownCap = finite(s.max_drawdown_fraction) ? s.max_drawdown_fraction*100 : null;
   const maxLoss = finite(p.initial_usdt) && finite(s.max_loss_fraction) ? p.initial_usdt*s.max_loss_fraction : null;
   const stale = !p.valuation_fresh || !fresh(state.data.paper.updated_utc,45);
+  const budget = p.trade_loss_budget_usdt ?? p.equity_usdt*s.risk_per_trade_fraction;
+  const budgetMode = s.stop_mode === "equity_budget";
+  const policy = state.data.paper?.policy_history?.at(-1);
   $("risk-content").innerHTML = `<div class="position-head"><div><strong>${esc(p.symbol || "当前空仓")}</strong><small>${esc(model(p.model))}${stale ? " · 估值过期" : ""}</small></div>${pill(p.open_position ? (l.qty>0?"模拟多头":l.qty<0?"模拟空头":"持仓") : "等待机会", p.open_position?"green":"")}</div>
-    <div class="position-grid"><div><span>名义敞口</span><b>${number(p.effective_exposure,2)}×</b></div><div><span>占用保证金</span><b>${number(p.isolated_margin_usdt,3)} U</b></div><div><span>${p.open_position?"模拟入场价":"单笔风险上限"}</span><b>${p.open_position?price(l.entry):number(p.initial_usdt*s.risk_per_trade_fraction,2)+" U"}</b></div><div><span>${p.open_position?"当前保护价":"最长持仓"}</span><b>${p.open_position?price(l.stop):number(s.max_holding_minutes,0)+" 分钟"}</b></div></div>
+    <div class="position-grid"><div><span>名义敞口</span><b>${number(p.effective_exposure,2)}×</b></div><div><span>占用保证金</span><b>${number(p.isolated_margin_usdt,3)} U</b></div><div><span>${p.open_position?"模拟入场价":"单笔亏损预算"}</span><b>${p.open_position?price(l.entry):number(budget,2)+" U"}</b></div><div><span>${p.open_position?"当前保护价":"最长持仓"}</span><b>${p.open_position?price(l.stop):number(s.max_holding_minutes,0)+" 分钟"}</b></div></div>
+    ${budgetMode ? `<p class="risk-caption"><b>权益止损 · 开仓时权益的 ${number(s.risk_per_trade_fraction*100,0)}%</b><br>单笔预算 ${number(budget,2)} U · 综合底线下可用预算 ${number(p.effective_loss_budget_usdt,2)} U<br>权益退出线 ${number(p.risk_equity_floor_usdt,2)} U；ATR 紧止损与移动止损已关闭。策略止盈和最长持仓仍有效。${policy ? `<br>风险设定变更于 ${esc(timeText(policy.time,true))}，此前亏损与曲线完整保留。` : ""}</p>` : ""}
     <div class="risk-bars"><div class="risk-bar-row"><div class="risk-bar-label"><span>本日亏损 / 限额</span><strong>${number(dailyLoss,3)} / ${number(dailyCap,2)} U</strong></div>${progress(dailyLoss,dailyCap)}</div><div class="risk-bar-row"><div class="risk-bar-label"><span>最大回撤 / 停机线</span><strong>${number(p.max_drawdown_pct)} / ${number(drawdownCap,0)}%</strong></div>${progress(p.max_drawdown_pct,drawdownCap)}</div></div>
     <p class="risk-caption">${esc(label(p.status))}${p.halted?" · "+esc(label(p.halted)):""}${p.daily_halted?" · 本日暂停开仓":""}<br>累计费用 ${number(p.fees_usdt,3)} U · 资金费 ${signed(p.funding_cost_usdt,3)} U<br>最多可承受损失 ${number(maxLoss,0)} U；止损和模拟强平不能保证真实损失上限。</p>`;
 }
@@ -238,7 +242,7 @@ function showDetail(id) {
     ["15m 价格变化",pct(f.change_15m_pct)],["RSI (14)",number(f.rsi14,1)],
     ["相对成交量",`${number(f.relative_volume)}×`],["ATR / 价格",`${number(f.atr_pct)}%`],["MACD 柱",number(f.macd_histogram,7)],
     ["OI · 15m 变化",pct(f.open_interest_change_15m_pct)],["主动买 / 卖比",number(f.taker_buy_sell_ratio,3)],
-    ["资金费",`${number(f.funding_bps,2)} bps`],["买卖价差",`${number(f.spread_bps)} bps`],["参考价格",price(c.reference_price)],["止损距离",`${number(c.stop_fraction*100)}%`]
+    ["资金费",`${number(f.funding_bps,2)} bps`],["买卖价差",`${number(f.spread_bps)} bps`],["参考价格",price(c.reference_price)],[(state.data.paper?.risk_settings?.stop_mode === "equity_budget")?"信号参考距离（非权益止损）":"止损距离",`${number(c.stop_fraction*100)}%`]
   ];
   $("detail-content").innerHTML=`<h2 id="detail-title">${esc(c.symbol)} <span class="muted">/ ${esc(model(c.model))}</span></h2><div class="dialog-subtitle">${pill(c.direction>0?"做多方向":"做空方向",c.direction>0?"green":"red")}${pill(`规则评分 ${c.score} / 100`)}${pill(candidateState(c),currentCandidate(c)?"green":"amber")}</div><p class="dialog-note">这是快照中的信号证据。规则评分是条件加分，不是盈利概率；新的开仓还需复核及最新报价、深度和风险校验。</p><div class="evidence-grid">${evidence.map(([k,v])=>`<div class="evidence-box"><span>${esc(k)}</span><strong>${esc(v)}</strong></div>`).join("")}</div><h3>评分依据</h3><div class="evidence-list">${Object.entries(c.evidence||{}).map(([key,v])=>`<div class="evidence-item"><span>${esc(label(key))}</span><b class="${v>0?"positive":"muted"}">+${number(v,0)}</b></div>`).join("")}</div><h3>${c.blockers?.length?"暂缓原因":"模型形态已通过"}</h3><p class="dialog-note">${c.blockers?.length?c.blockers.map((v)=>esc(label(v))).join("；"):"本快照未触发规则阻止项。复核者仍需权衡反对证据，并可选择继续观察。"}</p><p class="detail-meta">数据快照 ${esc(s.snapshot_id)}<br>观测时间 ${esc(timeText(c.evidence_time,true))} CST · K 线收盘 ${esc(timeText(c.candle_end,true))} CST<br>此详情固定于打开时的快照；关闭再打开可查看新一轮证据。</p>`;
   $("detail-dialog").showModal();
