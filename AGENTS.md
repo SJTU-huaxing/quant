@@ -1,3 +1,7 @@
+# Project stopped
+
+- On 2026-09-15, the user requested a completion assessment and stopped the project. This supersedes earlier instructions to keep it running. Do not restart collectors, scans, simulated trading, the dashboard, scheduled reviews, or new experiments unless the user explicitly resumes the project. Preserve existing data and ledgers. Read-only assessment and shutdown documentation are allowed.
+
 # Private configuration boundary
 
 - Never read, open, print, copy, hash, parse, load, upload, or otherwise access `.env` or private `.env.*` files. Do not inspect their contents through shell tools, Python, dotenv, Git, scanners, hooks, a child process, or another agent.
